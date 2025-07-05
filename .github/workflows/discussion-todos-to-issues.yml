@@ -1,5 +1,9 @@
 name: Discussion TODOs to Issues
 
+permissions:
+  issues: write
+  discussions: read
+
 on:
   discussion:
     types: [created]
