@@ -1,0 +1,70 @@
+name: Discussion TODOs to Issues
+
+on:
+  discussion:
+    types: [created]
+
+jobs:
+  discussion_todos_to_issues:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create issues from TODOs in meeting minutes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const discussion = context.payload.discussion;
+
+            // 1. 카테고리명이 "회의록"이 아니면 종료
+            if (discussion.category.name !== "회의록") {
+              console.log("카테고리가 회의록이 아니므로 종료합니다.");
+              return;
+            }
+
+            // 2. 본문을 줄 단위로 분리
+            const lines = discussion.body.split('\n');
+
+            // 3. "TODO" 섹션 찾기
+            let inTodoSection = false;
+            let currentAssignee = null;
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i].trim();
+
+              // "TODO" 섹션 시작
+              if (/^#+\s*TODO/i.test(line)) {
+                inTodoSection = true;
+                currentAssignee = null;
+                continue;
+              }
+
+              // 섹션이 끝나는 조건(다음 헤더 등)
+              if (inTodoSection && /^#+\s*\S+/.test(line) && !/^#+\s*TODO/i.test(line)) {
+                inTodoSection = false;
+                currentAssignee = null;
+                continue;
+              }
+
+              if (!inTodoSection) continue;
+
+              // @username 줄 찾기
+              const assigneeMatch = line.match(/^@(\w+)/);
+              if (assigneeMatch) {
+                currentAssignee = assigneeMatch[1];
+                continue;
+              }
+
+              // - [ ] TODO 항목 찾기
+              const todoMatch = line.match(/^- \[ \] (.+)/);
+              if (todoMatch && currentAssignee) {
+                const todoText = todoMatch[1].trim();
+
+                // Issue 생성
+                await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title: todoText,
+                  body: `이 이슈는 회의록 Discussion에서 자동 생성되었습니다.\n\n[원본 Discussion 링크](${discussion.html_url})`,
+                  assignees: [currentAssignee],
+                  labels: ["회의록-TODO"]
+                });
+              }
+            }
