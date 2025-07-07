@@ -1,12 +1,12 @@
-name: Discussion TODOs to Issues
-
-permissions:
-  issues: write
-  discussions: read
+name: Discussion TODOs to Issues (with Sub Issues Link)
 
 on:
   discussion:
     types: [created]
+
+permissions:
+  issues: write
+  discussions: read
 
 jobs:
   discussion_todos_to_issues:
@@ -24,37 +24,32 @@ jobs:
             const lines = discussion.body.split('\n');
             let inTodoSection = false;
             let currentAssignee = null;
-            let parentIssue = null;
+            let parentIssueData = null; // 부모 이슈의 전체 데이터 저장
+
             for (let i = 0; i < lines.length; i++) {
               const line = lines[i];
 
-              // "TODO" 섹션 시작
               if (/^#+\s*TODO/i.test(line.trim())) {
                 inTodoSection = true;
                 currentAssignee = null;
-                parentIssue = null;
+                parentIssueData = null;
                 continue;
               }
-
-              // 섹션이 끝나는 조건(다음 헤더 등)
               if (inTodoSection && /^#+\s*\S+/.test(line.trim()) && !/^#+\s*TODO/i.test(line.trim())) {
                 inTodoSection = false;
                 currentAssignee = null;
-                parentIssue = null;
+                parentIssueData = null;
                 continue;
               }
-
               if (!inTodoSection) continue;
 
-              // @username 줄 찾기
               const assigneeMatch = line.trim().match(/^@(\w+)/);
               if (assigneeMatch) {
                 currentAssignee = assigneeMatch[1];
-                parentIssue = null;
+                parentIssueData = null;
                 continue;
               }
 
-              // 체크박스 찾기 (들여쓰기 포함)
               const todoMatch = line.match(/^(\s*)- \[ \] (.+)/);
               if (todoMatch && currentAssignee) {
                 const indent = todoMatch[1].length;
@@ -70,17 +65,28 @@ jobs:
                     assignees: [currentAssignee],
                     labels: ["회의록-TODO"]
                   });
-                  parentIssue = issue.data.number;
-                } else if (indent >= 2 && parentIssue) {
-                  // sub issue 생성, 부모 이슈 번호를 본문에 남김
-                  await github.rest.issues.create({
+                  parentIssueData = issue.data; // 부모 이슈 데이터 전체 저장
+                } else if (indent >= 2 && parentIssueData) {
+                  // 1. sub issue 생성
+                  const subIssue = await github.rest.issues.create({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
                     title: todoText,
-                    body: `부모 이슈: #${parentIssue}\n\n이 이슈는 회의록 Discussion에서 자동 생성되었습니다.\n\n[원본 Discussion 링크](${discussion.html_url})`,
+                    body: `부모 이슈: #${parentIssueData.number}\n\n이 이슈는 회의록 Discussion에서 자동 생성되었습니다.\n\n[원본 Discussion 링크](${discussion.html_url})`,
                     assignees: [currentAssignee],
                     labels: ["회의록-TODO", "sub-issue"]
                   });
+
+                  // 2. 부모 이슈 본문에 sub-issue를 체크박스로 추가
+                  const newBody = parentIssueData.body + `\n- [ ] #${subIssue.data.number}`;
+                  await github.rest.issues.update({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: parentIssueData.number,
+                    body: newBody
+                  });
+                  // 부모 이슈의 최신 본문으로 업데이트
+                  parentIssueData.body = newBody;
                 }
               }
             }
