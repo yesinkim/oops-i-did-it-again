@@ -12,63 +12,75 @@ jobs:
   discussion_todos_to_issues:
     runs-on: ubuntu-latest
     steps:
-      - name: Create issues from TODOs in meeting minutes
+      - name: Create issues from TODOs in meeting minutes (with sub issues)
         uses: actions/github-script@v7
         with:
           script: |
             const discussion = context.payload.discussion;
-
-            // 1. 카테고리명이 "회의록"이 아니면 종료
             if (discussion.category.name !== "회의록") {
               console.log("카테고리가 회의록이 아니므로 종료합니다.");
               return;
             }
-
-            // 2. 본문을 줄 단위로 분리
             const lines = discussion.body.split('\n');
-
-            // 3. "TODO" 섹션 찾기
             let inTodoSection = false;
             let currentAssignee = null;
+            let parentIssue = null;
             for (let i = 0; i < lines.length; i++) {
-              const line = lines[i].trim();
+              const line = lines[i];
 
               // "TODO" 섹션 시작
-              if (/^#+\s*TODO/i.test(line)) {
+              if (/^#+\s*TODO/i.test(line.trim())) {
                 inTodoSection = true;
                 currentAssignee = null;
+                parentIssue = null;
                 continue;
               }
 
               // 섹션이 끝나는 조건(다음 헤더 등)
-              if (inTodoSection && /^#+\s*\S+/.test(line) && !/^#+\s*TODO/i.test(line)) {
+              if (inTodoSection && /^#+\s*\S+/.test(line.trim()) && !/^#+\s*TODO/i.test(line.trim())) {
                 inTodoSection = false;
                 currentAssignee = null;
+                parentIssue = null;
                 continue;
               }
 
               if (!inTodoSection) continue;
 
               // @username 줄 찾기
-              const assigneeMatch = line.match(/^@(\w+)/);
+              const assigneeMatch = line.trim().match(/^@(\w+)/);
               if (assigneeMatch) {
                 currentAssignee = assigneeMatch[1];
+                parentIssue = null;
                 continue;
               }
 
-              // - [ ] TODO 항목 찾기
-              const todoMatch = line.match(/^- \[ \] (.+)/);
+              // 체크박스 찾기 (들여쓰기 포함)
+              const todoMatch = line.match(/^(\s*)- \[ \] (.+)/);
               if (todoMatch && currentAssignee) {
-                const todoText = todoMatch[1].trim();
+                const indent = todoMatch[1].length;
+                const todoText = todoMatch[2].trim();
 
-                // Issue 생성
-                await github.rest.issues.create({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  title: todoText,
-                  body: `이 이슈는 회의록 Discussion에서 자동 생성되었습니다.\n\n[원본 Discussion 링크](${discussion.html_url})`,
-                  assignees: [currentAssignee],
-                  labels: ["회의록-TODO"]
-                });
+                if (indent === 0) {
+                  // 부모 이슈 생성
+                  const issue = await github.rest.issues.create({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    title: todoText,
+                    body: `이 이슈는 회의록 Discussion에서 자동 생성되었습니다.\n\n[원본 Discussion 링크](${discussion.html_url})`,
+                    assignees: [currentAssignee],
+                    labels: ["회의록-TODO"]
+                  });
+                  parentIssue = issue.data.number;
+                } else if (indent >= 2 && parentIssue) {
+                  // sub issue 생성, 부모 이슈 번호를 본문에 남김
+                  await github.rest.issues.create({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    title: todoText,
+                    body: `부모 이슈: #${parentIssue}\n\n이 이슈는 회의록 Discussion에서 자동 생성되었습니다.\n\n[원본 Discussion 링크](${discussion.html_url})`,
+                    assignees: [currentAssignee],
+                    labels: ["회의록-TODO", "sub-issue"]
+                  });
+                }
               }
             }
