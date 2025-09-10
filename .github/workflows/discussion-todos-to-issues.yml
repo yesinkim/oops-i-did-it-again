@@ -44,11 +44,11 @@ jobs:
               if (!inTodoSection) continue;
 
               // 담당자를 찾는 정규식 (여러 명 지원)
-              const assigneeMatches = line.trim().match(/\*\*.*\(@([\w-]+)\)\*\*/g);
+              const assigneeMatches = line.trim().match(/@([\w-]+)/g);
               if (assigneeMatches) {
                 // 모든 담당자 추출
                 currentAssignee = assigneeMatches.map(match => {
-                  const userMatch = match.match(/\(@([\w-]+)\)/);
+                  const userMatch = match.match(/@([\w-]+)/);
                   return userMatch ? userMatch[1] : null;
                 }).filter(user => user !== null);
                 parentIssueData = null;
