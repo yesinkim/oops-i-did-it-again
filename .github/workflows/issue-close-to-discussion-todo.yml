@@ -1,8 +1,8 @@
-name: Issue Close to Discussion TODO
+name: Issue Status to Discussion TODO Sync
 
 on:
   issues:
-    types: [closed]
+    types: [closed, reopened]
 
 permissions:
   issues: read
@@ -16,6 +16,16 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            // 이벤트 타입 확인
+            const action = context.payload.action;
+            const isClosed = action === 'closed';
+            const isReopened = action === 'reopened';
+            
+            if (!isClosed && !isReopened) {
+              console.log("이벤트 타입이 closed 또는 reopened가 아니므로 종료합니다.");
+              return;
+            }
+
             // 1. 이슈 본문에서 Discussion URL, 체크박스 텍스트 추출
             const issueBody = context.payload.issue.body;
             const discussionUrlMatch = issueBody.match(/\(https:\/\/github\.com\/.+\/discussions\/(\d+)\)/);
@@ -45,9 +55,18 @@ jobs:
             }
             let newBody = discussion.body;
 
-            // 3. 체크박스 텍스트를 [ ] → [x]로 변경
-            const regex = new RegExp(`- \\[ \\] ${todoText}`);
-            newBody = newBody.replace(regex, `- [x] ${todoText}`);
+            // 3. 이벤트에 따라 체크박스 상태 변경
+            if (isClosed) {
+              // 이슈가 닫힐 때: [ ] → [x]로 변경
+              const regex = new RegExp(`- \\[ \\] ${todoText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`);
+              newBody = newBody.replace(regex, `- [x] ${todoText}`);
+              console.log(`이슈가 닫혀서 Discussion TODO를 체크합니다: ${todoText}`);
+            } else if (isReopened) {
+              // 이슈가 재오픈될 때: [x] → [ ]로 변경
+              const regex = new RegExp(`- \\[x\\] ${todoText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`);
+              newBody = newBody.replace(regex, `- [ ] ${todoText}`);
+              console.log(`이슈가 재오픈되어서 Discussion TODO 체크를 해제합니다: ${todoText}`);
+            }
 
             // 4. GraphQL로 Discussion 본문 수정
             const mutation = `
@@ -60,3 +79,4 @@ jobs:
               }
             `;
             await github.graphql(mutation);
+            console.log("Discussion 본문 업데이트 완료");

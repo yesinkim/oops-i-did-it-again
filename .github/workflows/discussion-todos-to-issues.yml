@@ -1,4 +1,4 @@
-name: Discussion TODOs to Issues (New Format)
+name: Discussion TODOs to Issues (25.09.10 Updated)
 
 on:
   discussion:
@@ -69,7 +69,7 @@ jobs:
                     owner: context.repo.owner,
                     repo: context.repo.repo,
                     title: todoText,
-                    body: `이 이슈는 회의록 Discussion에서 자동 생성되었습니다.\n\n[원본 Discussion 링크](${discussion.html_url})`,
+                    body: `이 이슈는 회의록 Discussion에서 자동 생성되었습니다.\n\n[원본 Discussion 링크](${discussion.html_url})\n\n<!-- TODO_ID: ${discussion.id}_${todoText.replace(/[^a-zA-Z0-9]/g, '_')} -->`,
                     assignees: currentAssignee,
                     labels: ["회의록-TODO"]
                   });
@@ -80,7 +80,7 @@ jobs:
                     owner: context.repo.owner,
                     repo: context.repo.repo,
                     title: todoText,
-                    body: `부모 이슈: #${parentIssueData.number}\n\n이 이슈는 회의록 Discussion에서 자동 생성되었습니다.\n\n[원본 Discussion 링크](${discussion.html_url})`,
+                    body: `부모 이슈: #${parentIssueData.number}\n\n이 이슈는 회의록 Discussion에서 자동 생성되었습니다.\n\n[원본 Discussion 링크](${discussion.html_url})\n\n<!-- TODO_ID: ${discussion.id}_${todoText.replace(/[^a-zA-Z0-9]/g, '_')} -->`,
                     assignees: currentAssignee,
                     labels: ["회의록-TODO", "sub-issue"]
                   });
